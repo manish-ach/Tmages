@@ -1,0 +1,7 @@
+images - tui
+
+1: build tui
+	a: file browser
+	b: select file
+2: Modify image
+3: output done
