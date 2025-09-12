@@ -23,6 +23,7 @@ pub struct App {
     current_dir: PathBuf,
     files: Vec<String>,
     selected: usize,
+    scroll: usize,
     exit: bool,
 }
 
@@ -34,6 +35,7 @@ impl App {
             current_dir: home,
             files,
             selected: 0,
+            scroll: 0,
             exit: false,
         })
     }
@@ -79,12 +81,18 @@ impl App {
             KeyCode::Up => {
                 if self.selected > 0 {
                     self.selected -= 1;
+                    if self.selected < self.scroll as usize {
+                        self.scroll = self.selected;
+                    }
                 }
             }
 
             KeyCode::Down => {
                 if self.selected + 1 < self.files.len() {
                     self.selected += 1;
+                    if self.selected >= self.scroll {
+                        self.scroll = self.selected;
+                    }
                 }
             }
 
@@ -103,6 +111,7 @@ impl App {
                     if let Ok(new_files) = Self::read_dir(&self.current_dir) {
                         self.files = new_files;
                         self.selected = 0;
+                        self.scroll = 0;
                     }
                 }
             }
@@ -148,12 +157,27 @@ impl Widget for &App {
             ])
             .split(inner);
 
-        let file_lines: Vec<Line> = self
-            .files
+        let max_visible = chunks[0].height.saturating_sub(2) as usize;
+
+        let total = self.files.len();
+        let mut scroll = self.scroll;
+
+        if self.selected >= scroll + max_visible {
+            scroll = self.selected + 1 - max_visible;
+        }
+        if self.selected < scroll {
+            scroll = self.selected;
+        }
+
+        let start = self.scroll.min(total);
+        let end = (start + max_visible).min(total);
+
+        let file_lines: Vec<Line> = self.files[start as usize..end as usize]
             .iter()
             .enumerate()
             .map(|(i, name)| {
-                if i == self.selected {
+                let absolute_index = start + i;
+                if absolute_index == self.selected {
                     Line::from(name.clone()).style(
                         Style::default()
                             .bg(ratatui::style::Color::Blue)
