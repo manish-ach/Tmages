@@ -1,8 +1,16 @@
-use std::path::PathBuf;
+use base64::Engine as _;
+use std::{
+    fs,
+    io::{self, Write},
+    path::PathBuf,
+};
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use crossterm::{
+    event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
+    terminal,
+};
 use ratatui::{
-    DefaultTerminal, Frame,
+    DefaultTerminal, Frame, Terminal,
     buffer::Buffer,
     layout::Rect,
     style::{Modifier, Style, Stylize},
@@ -157,6 +165,33 @@ impl Widget for &App {
             ])
             .split(inner);
 
+        let list_rect = chunks[0];
+        let preview_rect = chunks[1];
+
+        let selected_path = self
+            .current_dir
+            .join(self.files[self.selected].trim_end_matches('/'));
+        if selected_path.is_file() {
+            if let Some(ext) = selected_path.extension().and_then(|e| e.to_str()) {
+                let ext = ext.to_lowercase();
+                if ["png", "jpg", "jpeg", "gif", "bmp", "webp"].contains(&ext.as_str()) {
+                    // Display image in the preview area
+                    let _ = kitty_display_image(
+                        selected_path.to_str().unwrap(),
+                        preview_rect.x,
+                        preview_rect.y,
+                        preview_rect.width,
+                        preview_rect.height,
+                    );
+                }
+            }
+        }
+
+        Block::bordered()
+            .title(" Preview ".blue().bold().into_right_aligned_line())
+            .border_set(border::PLAIN)
+            .render(preview_rect, buf);
+
         let max_visible = chunks[0].height.saturating_sub(2) as usize;
 
         let total = self.files.len();
@@ -195,13 +230,26 @@ impl Widget for &App {
                 .title(format!(" Directory: {}", self.current_dir.display()).blue())
                 .border_set(border::PLAIN),
         );
-        file_paragraph.render(chunks[0], buf);
+        file_paragraph.render(list_rect, buf);
 
-        let preview_paragraph = Paragraph::new(Text::from("placeholder")).block(
-            Block::bordered()
-                .title(" Preview ".blue().bold().into_right_aligned_line())
-                .border_set(border::PLAIN),
-        );
-        preview_paragraph.render(chunks[1], buf);
+        Block::bordered()
+            .title(" Preview ".blue().bold().into_right_aligned_line())
+            .border_set(border::PLAIN)
+            .render(preview_rect, buf);
     }
+}
+
+fn kitty_display_image(path: &str, x: u16, y: u16, w: u16, h: u16) -> io::Result<()> {
+    let data = fs::read(path)?;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(data);
+    print!("\x1b_Ga=d\x1b\\");
+    let kitty_x = x + 2; // Add 1 for 1-indexing + 1 for border
+    let kitty_y = y + 2; // Add 1 for 1-indexing + 1 for border
+    let kitty_w = w.saturating_sub(2); // Subtract border width
+    let kitty_h = h.saturating_sub(2); // Subtract border height
+    print!(
+        "\x1b_Gf=100,a=T,C=1,q=2,X={},Y={},c={},r={};{}\x1b\\",
+        kitty_x, kitty_y, kitty_w, kitty_h, b64
+    );
+    io::stdout().flush()
 }
