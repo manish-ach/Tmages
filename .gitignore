@@ -2,7 +2,6 @@
 /target
 **/*.rs.bk
 
-
 # Editors
 .DS_Store
 .idea/
